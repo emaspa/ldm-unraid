@@ -16,6 +16,11 @@ Commands:
   assemble VOLUME [--rw]     Create /dev/mapper/ldm_vol_<group>_<volume> without mounting
   remove VOLUME              Remove the device-mapper device (must be unmounted)
   unmount-all                Unmount and remove every LDM volume
+  share VOLUME off           Stop sharing the volume over SMB
+  share VOLUME public        Share it with guest access
+  share VOLUME private USER=ro|rw...
+                             Share it with the listed Unraid users only
+                             (shares follow the mount: read-only mounts give read-only shares)
 
 VOLUME is a volume GUID, a dm name (ldm_vol_...), GROUP/VolumeN, or a filesystem label.
 --device limits the scan to the given whole-disk devices (also accepts loop devices).
@@ -67,6 +72,8 @@ try {
 				printf("  %-10s %-9s %10s  %-6s%s%s\n", $v['name'], $v['type'], human($v['size']), $fs, $label, $v['hint'] ? "  (was {$v['hint']})" : '');
 				if ($v['mount']) echo "             mounted ".($v['mount']['readonly'] ? 'ro' : 'rw')." at {$v['mount']['mountpoint']}\n";
 				elseif ($v['assembled']) echo "             assembled at /dev/mapper/{$v['dm_name']}\n";
+				if ($v['share']['name']) echo "             shared as \\\\{$st['server']}\\{$v['share']['name']}\n";
+				elseif ($v['share']['enabled']) echo "             shared ({$v['share']['security']}) when mounted\n";
 				if ($v['problem']) echo "             cannot assemble: {$v['problem']}\n";
 				elseif ($v['missing']) echo "             missing: ".implode(', ', $v['missing'])." (reading the surviving copy)\n";
 			}
@@ -86,6 +93,23 @@ try {
 		case 'assemble': ldm_assemble($v, $rw); echo "/dev/mapper/{$v['dm_name']}\n"; break;
 		case 'remove':   ldm_remove($v); break;
 		}
+		break;
+
+	case 'share':
+		if (!isset($pos[1], $pos[2])) usage();
+		$v = ldm_find_volume(ldm_status($devices), $pos[1]);
+		$users = [];
+		foreach (array_slice($pos, 3) as $spec) {
+			if (!preg_match('/^([^=]+)=(ro|rw)$/', $spec, $m)) usage();
+			$users[$m[1]] = $m[2] === 'rw' ? 'read-write' : 'read-only';
+		}
+		$mode = $pos[2];
+		if (!in_array($mode, ['off', 'public', 'private'])) usage();
+		$cur = $v['share'];
+		ldm_share_configure($v, $mode !== 'off', $mode === 'off' ? $cur['security'] : $mode,
+			$mode === 'private' ? $users : (array)$cur['users']);
+		$name = ldm_share_active($v['dm_name']);
+		echo $name ? "shared as \\\\".(ldm_emhttp_var('NAME') ?: gethostname())."\\$name\n" : ($mode === 'off' ? "not shared\n" : "will be shared when mounted\n");
 		break;
 
 	case 'unmount-all':

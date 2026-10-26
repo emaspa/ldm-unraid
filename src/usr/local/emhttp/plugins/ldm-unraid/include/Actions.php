@@ -2,6 +2,8 @@
 /* AJAX endpoint for the Windows Dynamic Disks section on the Main page.
  * GET  action=status                       -> scan and live state
  * POST action=mount|unmount, volume=<guid>  -> change state (mode=ro|rw for mount)
+ * POST action=share, volume=<guid>, enabled=0|1, security=public|private,
+ *      users[<name>]=no|read-only|read-write -> SMB share settings
  * POST bodies are form-encoded, so the CSRF token the webGui appends arrives
  * in $_POST like any other field. */
 
@@ -35,6 +37,10 @@ try {
 	case 'unmount':
 		ldm_unmount($v);
 		reply(['ok' => true]);
+	case 'share':
+		$users = is_array($_POST['users'] ?? null) ? $_POST['users'] : [];
+		$cfg = ldm_share_configure($v, ($_POST['enabled'] ?? '0') === '1', (string)($_POST['security'] ?? 'public'), $users);
+		reply(['ok' => true, 'share' => $cfg]);
 	default:
 		reply(['ok' => false, 'error' => "unknown action $action"]);
 	}

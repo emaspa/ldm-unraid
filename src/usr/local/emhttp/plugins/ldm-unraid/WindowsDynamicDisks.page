@@ -1,6 +1,7 @@
 Menu="Main:4"
 Title="Windows Dynamic Disks"
 Tag="windows"
+Markdown="false"
 ---
 <?PHP
 /* Copyright 2026 Emanuele Sparvoli. GPL-3.0-or-later.
@@ -18,6 +19,10 @@ Tag="windows"
 #ldm_body .ldm-warn{color:#e68a00}
 #ldm_body .ldm-err{color:#d33}
 #ldm_body button{margin:0 4px 0 0}
+#ldm_body tr.ldm-share-form td{white-space:normal;text-align:left;padding:10px 20px}
+#ldm_body .ldm-share-form label{margin-right:16px}
+#ldm_body .ldm-share-form select{min-width:120px;margin:2px 8px 2px 0}
+#ldm_body .ldm-share-users span{display:inline-block;margin-right:20px}
 </style>
 <div class="TableContainer">
   <table class="unraid disk_status" id="ldm_table">
@@ -29,10 +34,11 @@ Tag="windows"
       <td>_(FS)_</td>
       <td>_(Size)_</td>
       <td>_(Status)_</td>
+      <td>_(SMB)_</td>
       <td><button type="button" onclick="ldmRefresh()">_(Rescan)_</button></td>
     </tr>
   </thead>
-  <tbody id="ldm_body"><tr><td colspan="7"><em>_(Scanning)_...</em></td></tr></tbody>
+  <tbody id="ldm_body"><tr><td colspan="8"><em>_(Scanning)_...</em></td></tr></tbody>
   </table>
 </div>
 
@@ -69,23 +75,80 @@ function ldmRow(v) {
     if (!v.readonly_only) action += '<button type="button" onclick="ldmMountRW(\'' + v.guid + '\')" title="_(Mount read-write)_">_(R/W)_</button>';
   }
   return '<tr><td>' + ldmEsc(v.name) + label + hint + '</td><td>' + ldmEsc(v.type) + '</td><td class="ldm-members">' + members +
-         '</td><td>' + ldmEsc(v.fs.type || '') + '</td><td>' + ldmSize(v.size) + '</td><td class="ldm-status">' + status + '</td><td>' + action + '</td></tr>';
+         '</td><td>' + ldmEsc(v.fs.type || '') + '</td><td>' + ldmSize(v.size) + '</td><td class="ldm-status">' + status +
+         '</td><td>' + ldmShareCell(v) + '</td><td>' + action + '</td></tr>' + ldmShareForm(v);
 }
 
+let ldmData = {}, ldmOpenForm = null;
+
+function ldmShareCell(v) {
+  const s = v.share;
+  let text = '_(Off)_';
+  if (s.name) text = '\\\\' + ldmEsc(ldmData.server) + '\\' + ldmEsc(s.name);
+  else if (s.enabled) text = '<span title="_(Shared while mounted)_">' + (s.security === 'public' ? '_(Public)_' : '_(Private)_') + '</span>';
+  return '<a href="#" onclick="ldmToggleForm(\'' + v.guid + '\');return false" title="_(SMB share settings)_">' + text + '</a>';
+}
+
+function ldmShareForm(v) {
+  if (ldmOpenForm !== v.guid) return '';
+  const s = v.share, id = 'ldm_share_' + v.guid;
+  const users = (ldmData.smb_users || []).map(u => {
+    const cur = s.users[u] || 'no';
+    const opt = (val, txt) => '<option value="' + val + '"' + (cur === val ? ' selected' : '') + '>' + txt + '</option>';
+    return '<span>' + ldmEsc(u) + ': <select name="' + ldmEsc(u) + '">' + opt('no', '_(No access)_') +
+           opt('read-only', '_(Read-only)_') + opt('read-write', '_(Read/Write)_') + '</select></span>';
+  }).join('');
+  const sec = val => (s.security === val ? ' checked' : '');
+  return '<tr class="ldm-share-form" id="' + id + '"><td colspan="8">' +
+    '<label><input type="checkbox" class="ldm-enabled"' + (s.enabled ? ' checked' : '') + '> _(Share over SMB while mounted)_</label>' +
+    '<label><input type="radio" name="' + id + '_sec" value="public"' + sec('public') + '> _(Public, guest access)_</label>' +
+    '<label><input type="radio" name="' + id + '_sec" value="private"' + sec('private') + '> _(Private)_</label>' +
+    '<div class="ldm-share-users"' + (s.security === 'private' ? '' : ' style="display:none"') + '>' +
+    (users || '<em>_(No Unraid users defined)_</em>') + '</div>' +
+    '<div><em>_(A read-only mount is always shared read-only.)_</em></div>' +
+    (ldmData.smb_enabled ? '' : '<div class="ldm-warn">_(SMB is disabled in Settings, SMB.)_</div>') +
+    '<button type="button" onclick="ldmSaveShare(\'' + v.guid + '\')">_(Apply)_</button>' +
+    '<button type="button" onclick="ldmToggleForm(null)">_(Cancel)_</button>' +
+    '</td></tr>';
+}
+
+function ldmToggleForm(guid) {
+  ldmOpenForm = (ldmOpenForm === guid) ? null : guid;
+  ldmRender(ldmData);
+}
+
+function ldmSaveShare(guid) {
+  const f = $('#ldm_share_' + guid);
+  const data = {action: 'share', volume: guid, enabled: f.find('.ldm-enabled').is(':checked') ? '1' : '0',
+                security: f.find('input[type=radio]:checked').val() || 'public'};
+  f.find('.ldm-share-users select').each(function() { data['users[' + this.name + ']'] = this.value; });
+  $('#ldm_body button').prop('disabled', true);
+  $.post(ldmURL, data, function(r) {
+    if (!r.ok) swal({title: '_(Windows Dynamic Disks)_', text: r.error, type: 'error'});
+    else ldmOpenForm = null;
+    ldmRefresh();
+  }, 'json').fail(xhr => { swal({title: '_(Windows Dynamic Disks)_', text: 'HTTP ' + xhr.status, type: 'error'}); ldmRefresh(); });
+}
+
+$(document).on('change', '#ldm_body .ldm-share-form input[type=radio]', function() {
+  $(this).closest('td').find('.ldm-share-users').toggle(this.value === 'private');
+});
+
 function ldmRender(data) {
+  ldmData = data;
   let html = '';
   if (!data.ok) {
-    html = '<tr><td colspan="7" class="ldm-err">' + ldmEsc(data.error) + '</td></tr>';
+    html = '<tr><td colspan="8" class="ldm-err">' + ldmEsc(data.error) + '</td></tr>';
   } else if (!data.groups.length) {
-    html = '<tr><td colspan="7"><em>_(No Windows dynamic disks found)_</em></td></tr>';
+    html = '<tr><td colspan="8"><em>_(No Windows dynamic disks found)_</em></td></tr>';
   }
   (data.groups || []).forEach(g => {
     const missing = g.disks.filter(d => !d.device).map(d => d.name);
     const note = missing.length ? ' <span class="ldm-warn">_(missing)_: ' + ldmEsc(missing.join(', ')) + '</span>' : '';
-    html += '<tr class="ldm-group"><td colspan="7">' + ldmEsc(g.name) + note + '</td></tr>';
+    html += '<tr class="ldm-group"><td colspan="8">' + ldmEsc(g.name) + note + '</td></tr>';
     g.volumes.forEach(v => { html += ldmRow(v); });
   });
-  (data.errors || []).forEach(e => { html += '<tr><td colspan="7" class="ldm-warn">' + ldmEsc(e) + '</td></tr>'; });
+  (data.errors || []).forEach(e => { html += '<tr><td colspan="8" class="ldm-warn">' + ldmEsc(e) + '</td></tr>'; });
   $('#ldm_body').html(html);
 }
 

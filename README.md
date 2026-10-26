@@ -44,6 +44,20 @@ ldmctl unmount-all
 
 To move the data into the array, mount read-only, copy from `/mnt/disks/<label>` to a share with your usual tool, then unmount. The plugin unmounts its volumes when the array stops.
 
+## Sharing over SMB
+
+Click the **SMB** cell of a volume to share it. Choose **Public** for guest access, or **Private** to give each Unraid user no access, read-only or read/write. The share takes the mount point's name, so SAM1 becomes `\\<server>\SAM1`, and gets a suffix if a user share or another share already has that name.
+
+A share exists only while its volume is mounted, and a read-only mount always gives a read-only share. The settings are saved per volume on the flash drive, so the share comes back the next time you mount the volume. The same from the command line:
+
+```
+ldmctl share SAM1 public
+ldmctl share SAM1 private alice=rw bob=ro
+ldmctl share SAM1 off
+```
+
+The plugin registers shares the same way Unassigned Devices does, through `/etc/samba/smb-unassigned.conf`, so the two don't clash.
+
 ## Things to know
 
 **Don't mount the pieces in Unassigned Devices.** Unraid's kernel splits an MBR dynamic disk into one partition per LDM extent, and the first extent of a spanned volume carries a valid-looking NTFS boot sector. A read-write mount of that piece will damage the volume.

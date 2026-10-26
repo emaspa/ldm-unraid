@@ -702,10 +702,14 @@ function ldm_status(?array $devices = null): array
 			$v['dm_readonly'] = $dm[$v['dm_name']]['readonly'] ?? null;
 			$v['mount'] = $v['assembled'] ? ldm_mount_of($v['dm_name']) : null;
 			$v['fs'] = ldm_volume_fs($v);
+			$v['share'] = ldm_share_state($v);
 		}
 		unset($v);
 	}
 	unset($g);
+	$scan['smb_users'] = ldm_smb_users();
+	$scan['smb_enabled'] = ldm_smb_enabled();
+	$scan['server'] = ldm_emhttp_var('NAME') ?: gethostname();
 	return $scan;
 }
 
@@ -880,6 +884,11 @@ function ldm_mount(array $v, bool $rw = false): string
 		[$rc, $out, $err] = ldm_run('mount -t '.escapeshellarg($t).' -o '.escapeshellarg($opts).' '.escapeshellarg($dev).' '.escapeshellarg($mp));
 		if ($rc == 0) {
 			ldm_log("mounted $dev ($t, ".($rw ? 'rw' : 'ro').") at $mp");
+			try {
+				ldm_share_apply($v);
+			} catch (LdmException $e) {
+				ldm_log("not sharing $mp: ".$e->getMessage());
+			}
 			return $mp;
 		}
 		$errs[] = "$t: ".($err ?: $out ?: "exit $rc");
@@ -890,6 +899,7 @@ function ldm_mount(array $v, bool $rw = false): string
 
 function ldm_unmount(array $v): void
 {
+	ldm_share_remove($v['dm_name']);
 	$m = ldm_mount_of($v['dm_name']);
 	if ($m) {
 		[$rc, $out, $err] = ldm_run('umount '.escapeshellarg($m['mountpoint']));
@@ -913,4 +923,187 @@ function ldm_teardown_all(): array
 		}
 	}
 	return $errs;
+}
+
+/* ---------------------------------------------------------------------------
+ * SMB sharing
+ *
+ * Settings live on the flash drive per volume GUID, so a volume keeps its
+ * share settings across reboots and remounts. A share exists only while its
+ * volume is mounted. Each one is a file in /etc/samba/ldm-unraid included
+ * from /etc/samba/smb-unassigned.conf, which Unraid's smb.conf includes.
+ * Unassigned Devices rewrites that file too, but keeps every include line
+ * whose file exists.
+ */
+
+const LDM_CFG_DIR = '/boot/config/plugins/'.LDM_PLUGIN;
+const LDM_SHARES_CFG = LDM_CFG_DIR.'/shares.json';
+const LDM_SMB_DIR = '/etc/samba/'.LDM_PLUGIN;
+const LDM_SMB_INCLUDES = '/etc/samba/smb-unassigned.conf';
+
+function ldm_emhttp_var(string $key): ?string
+{
+	$var = @parse_ini_file('/var/local/emhttp/var.ini') ?: [];
+	return $var[$key] ?? null;
+}
+
+function ldm_smb_enabled(): bool
+{
+	return ldm_emhttp_var('shareSMBEnabled') !== 'no';
+}
+
+/* Unraid user accounts that can be given share access (root never can). */
+function ldm_smb_users(): array
+{
+	$users = @parse_ini_file('/var/local/emhttp/users.ini', true) ?: [];
+	return array_values(array_filter(array_keys($users), fn($u) => $u !== 'root'));
+}
+
+function ldm_shares_cfg(): array
+{
+	return json_decode((string)@file_get_contents(LDM_SHARES_CFG), true) ?: [];
+}
+
+/* Validate and store the share settings of one volume. */
+function ldm_share_configure(array $v, bool $enabled, string $security, array $users): array
+{
+	if (!in_array($security, ['public', 'private'])) throw new LdmException("unknown share security '$security'");
+	$known = ldm_smb_users();
+	$access = [];
+	foreach ($users as $u => $a) {
+		if (!in_array($u, $known, true)) throw new LdmException("unknown user '$u'");
+		if (!in_array($a, ['no', 'read-only', 'read-write'])) throw new LdmException("unknown access '$a' for $u");
+		if ($a !== 'no') $access[$u] = $a;
+	}
+	$cfg = ldm_shares_cfg();
+	$cfg[$v['guid']] = ['enabled' => $enabled, 'security' => $security, 'users' => $access];
+	@mkdir(LDM_CFG_DIR, 0755, true);
+	if (@file_put_contents(LDM_SHARES_CFG, json_encode($cfg, JSON_PRETTY_PRINT)."\n") === false) {
+		throw new LdmException('cannot write '.LDM_SHARES_CFG);
+	}
+	ldm_share_apply($v);
+	return $cfg[$v['guid']];
+}
+
+function ldm_share_file(string $dmname): string
+{
+	return LDM_SMB_DIR."/$dmname.conf";
+}
+
+/* Share name of an active share, read back from its file. */
+function ldm_share_active(string $dmname): ?string
+{
+	$conf = @file_get_contents(ldm_share_file($dmname));
+	return ($conf !== false && preg_match('/^\[([^\]]+)\]/', $conf, $m)) ? $m[1] : null;
+}
+
+function ldm_share_state(array $v): array
+{
+	$c = ldm_shares_cfg()[$v['guid']] ?? [];
+	return [
+		'enabled'  => $c['enabled'] ?? false,
+		'security' => $c['security'] ?? 'public',
+		'users'    => (object)($c['users'] ?? []),
+		'name'     => ldm_share_active($v['dm_name']),
+	];
+}
+
+/* Bring the share in line with the settings and the mount state. */
+function ldm_share_apply(array $v): void
+{
+	$c = ldm_shares_cfg()[$v['guid']] ?? null;
+	$m = ldm_mount_of($v['dm_name']);
+	if (!$c || !$c['enabled'] || !$m) {
+		ldm_share_remove($v['dm_name']);
+		return;
+	}
+	if (!ldm_smb_enabled()) throw new LdmException('SMB is disabled in Settings, SMB');
+
+	$name = ldm_share_name(basename($m['mountpoint']), $v['dm_name']);
+	$lines = [
+		"[$name]",
+		"\tcomment = Windows dynamic disk {$v['group']}/{$v['name']}",
+		"\tpath = {$m['mountpoint']}",
+		"\tbrowseable = yes",
+		"\tread only = ".($m['readonly'] ? 'Yes' : 'No'),
+	];
+	if ($c['security'] === 'public') {
+		$lines[] = "\tguest ok = Yes";
+	} else {
+		$users = $c['users'] ?? [];
+		if (!$users) {
+			// Nobody has access: keep the share but let no one in.
+			$lines[] = "\tinvalid users = @users";
+		} else {
+			$lines[] = "\tvalid users = ".implode(' ', array_keys($users));
+			$rw = array_keys(array_filter($users, fn($a) => $a === 'read-write'));
+			$ro = array_keys(array_filter($users, fn($a) => $a === 'read-only'));
+			// A write list overrides "read only", so leave it out on read-only mounts.
+			if ($rw && !$m['readonly']) $lines[] = "\twrite list = ".implode(' ', $rw);
+			if ($ro && !$m['readonly']) $lines[] = "\tread list = ".implode(' ', $ro);
+		}
+	}
+	if (ldm_emhttp_var('enableFruit') === 'yes') {
+		$lines[] = "\tvfs objects = catia fruit streams_xattr";
+		$lines[] = "\tfruit:encoding = native";
+	}
+	// Close the section so whatever smb.conf includes next stays global.
+	$conf = implode("\n", $lines)."\n[global]\n";
+
+	$file = ldm_share_file($v['dm_name']);
+	@mkdir(LDM_SMB_DIR, 0755, true);
+	if (@file_get_contents($file) === $conf && ldm_smb_include_present($file)) return;
+	file_put_contents($file, $conf);
+	ldm_smb_include($file, true);
+	ldm_run('smbcontrol all reload-config');
+	ldm_log("sharing {$m['mountpoint']} as SMB share '$name' (".($c['security'] === 'public' ? 'public' : 'private').', '.($m['readonly'] ? 'read-only' : 'read-write').')');
+}
+
+function ldm_share_remove(string $dmname): void
+{
+	$name = ldm_share_active($dmname);
+	$file = ldm_share_file($dmname);
+	if (!is_file($file)) return;
+	ldm_smb_include($file, false);
+	@unlink($file);
+	ldm_run('smbcontrol all reload-config');
+	if ($name !== null) {
+		ldm_run('smbcontrol all close-share '.escapeshellarg($name));
+		ldm_log("stopped sharing '$name'");
+	}
+}
+
+/* The mount point's name, unless another share already uses it. */
+function ldm_share_name(string $want, string $dmname): string
+{
+	$taken = [];
+	$own = realpath(ldm_share_file($dmname));
+	$files = array_merge(['/etc/samba/smb-shares.conf', '/boot/config/smb-extra.conf'],
+		glob('/etc/samba/unassigned-shares/*.conf') ?: [], glob(LDM_SMB_DIR.'/*.conf') ?: []);
+	foreach ($files as $f) {
+		if (realpath($f) === $own) continue;
+		foreach (@file($f, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
+			if (preg_match('/^\s*\[([^\]]+)\]/', $line, $m)) $taken[] = strtolower($m[1]);
+		}
+	}
+	foreach (glob('/mnt/user/*', GLOB_ONLYDIR) ?: [] as $d) $taken[] = strtolower(basename($d));
+	$name = $want;
+	for ($i = 2; in_array(strtolower($name), $taken) || in_array(strtolower($name), ['global', 'homes', 'printers']); $i++) {
+		$name = "{$want}_$i";
+	}
+	return $name;
+}
+
+function ldm_smb_include_present(string $file): bool
+{
+	return in_array("include = $file", @file(LDM_SMB_INCLUDES, FILE_IGNORE_NEW_LINES) ?: []);
+}
+
+function ldm_smb_include(string $file, bool $add): void
+{
+	$line = "include = $file";
+	$lines = @file(LDM_SMB_INCLUDES, FILE_IGNORE_NEW_LINES) ?: [];
+	$lines = array_values(array_filter($lines, fn($l) => trim($l) !== $line));
+	if ($add) $lines[] = $line;
+	file_put_contents(LDM_SMB_INCLUDES, $lines ? implode("\n", $lines)."\n" : '');
 }

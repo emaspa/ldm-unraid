@@ -8,15 +8,16 @@
 <!ENTITY repo      "emaspa/ldm-unraid">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&repo;/main/ldm-unraid.plg">
 <!ENTITY pkgURL    "https://github.com/&repo;/releases/download/v&version;/&name;-&version;-x86_64-1.txz">
-<!ENTITY md5       "1a2f858241a3cfbfc4e1e169ca7ff99a">
+<!ENTITY md5       "ccced4457c11bcb0dbcaa776c68e7b23">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="7.0.0" icon="windows" support="https://github.com/&repo;/issues" description="Read Windows dynamic disks (LDM): simple, spanned, striped and mirrored volumes, mounted under /mnt/disks.">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="7.0.0" icon="windows" support="https://github.com/&repo;/issues" description="Read Windows dynamic disks (LDM): simple, spanned, striped and mirrored volumes, mounted under /mnt/disks and optionally shared over SMB.">
 
 <CHANGES>
 ### 0.1.0
 - First release: find Windows dynamic disks, assemble simple, spanned, striped and mirrored volumes with device-mapper, and mount them read-only (or read-write) under /mnt/disks
 - Windows Dynamic Disks section on the Main page and an ldmctl command-line tool
+- Share a mounted volume over SMB, public or per user, from the Main page or with ldmctl share
 </CHANGES>
 
 <README>
