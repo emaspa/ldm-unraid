@@ -15,8 +15,9 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="7.0.0" support="&support;" description="Read Windows dynamic disks (LDM): simple, spanned, striped and mirrored volumes, mounted under /mnt/disks and optionally shared over SMB.">
 
 <CHANGES>
-### Unreleased
-- Plugin icon
+### 0.1.1
+- Plugin icon on the Plugins page, package description
+- Install keeps host directory symlinks and permissions (TAR_OPTIONS, as in the other plugins)
 
 ### 0.1.0
 - First release: find Windows dynamic disks, assemble simple, spanned, striped and mirrored volumes with device-mapper, and mount them read-only (or read-write) under /mnt/disks
