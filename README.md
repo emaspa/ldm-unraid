@@ -88,4 +88,6 @@ GPL-3.0-or-later.
 
 ## Support
 
+Questions and problems go to the [support thread on the Unraid forum](https://forums.unraid.net/topic/201053-plugin-support-windows-dynamic-disks-ldm-unraid/) or to [GitHub issues](https://github.com/emaspa/ldm-unraid/issues).
+
 If this saved your data, you can [buy me a coffee on Ko-fi](https://ko-fi.com/emaspa).
