@@ -74,6 +74,8 @@ Device names match `ldmtool`'s, `/dev/mapper/ldm_vol_<group>_<volume>`, so each 
 
 Windows 11 `diskpart` created the volumes on four virtual disks, two GPT and two MBR. There's a simple, a striped and a spanned NTFS volume, a mirror, and a spanned exFAT volume whose extents run in reverse disk order. `tests/windows/mk.ps1` builds them and `tests/windows/fill.ps1` fills each with random data and records SHA-256 hashes. On Unraid 7.3.4, `tests/verify.sh` attaches the images as loop devices, mounts every volume and compares the hashes. The device-mapper tables also match what `ldmtool` produces for the same images.
 
+It has also run on real hardware: two Samsung 870 QVO 2TB SSDs that Windows had striped into one 4 TB NTFS volume, moved from a Windows PC into an Unraid 7.3.4 server. The plugin found the disk group, mounted the volume read-only with 1.5 TB of data, and shared it over SMB. Zip archives on it pass `unzip -t` both locally and after copying over SMB. Each archive alternates between the two disks every 64 KiB, so a wrong stripe order or offset would fail the CRC.
+
 The code converts offsets on disks with 4K logical sectors to device-mapper's 512-byte sectors, but I haven't tested that against Windows-made images yet.
 
 ## Credits
