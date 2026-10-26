@@ -1,0 +1,50 @@
+<?xml version='1.0' standalone='yes'?>
+
+<!DOCTYPE PLUGIN [
+<!ENTITY name      "ldm-unraid">
+<!ENTITY author    "emaspa">
+<!ENTITY version   "0.1.0">
+<!ENTITY launch    "Main">
+<!ENTITY repo      "emaspa/ldm-unraid">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/&repo;/main/ldm-unraid.plg">
+<!ENTITY pkgURL    "https://github.com/&repo;/releases/download/v&version;/&name;-&version;-x86_64-1.txz">
+<!ENTITY md5       "1a2f858241a3cfbfc4e1e169ca7ff99a">
+]>
+
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="7.0.0" icon="windows" support="https://github.com/&repo;/issues" description="Read Windows dynamic disks (LDM): simple, spanned, striped and mirrored volumes, mounted under /mnt/disks.">
+
+<CHANGES>
+### 0.1.0
+- First release: find Windows dynamic disks, assemble simple, spanned, striped and mirrored volumes with device-mapper, and mount them read-only (or read-write) under /mnt/disks
+- Windows Dynamic Disks section on the Main page and an ldmctl command-line tool
+</CHANGES>
+
+<README>
+**Windows Dynamic Disks** reads volumes from disks that Windows converted to dynamic (LDM): simple, spanned, striped and mirrored volumes on MBR or GPT disks.
+Volumes are assembled with device-mapper and mounted under /mnt/disks, read-only by default. Nothing is written to the disks unless you choose Mount R/W.
+</README>
+
+<FILE Name="/boot/config/plugins/&name;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
+<URL>&pkgURL;</URL>
+<MD5>&md5;</MD5>
+</FILE>
+
+<FILE Run="/bin/bash">
+<INLINE>
+# Drop packages left over from older versions on the flash drive.
+find /boot/config/plugins/&name;/ -maxdepth 1 -name '&name;-*.txz' ! -name '&name;-&version;-x86_64-1.txz' -delete
+echo "&name; &version; installed. Volumes appear under Main, Windows Dynamic Disks, and in 'ldmctl status'."
+</INLINE>
+</FILE>
+
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+/usr/local/emhttp/plugins/&name;/scripts/ldmctl unmount-all
+removepkg &name;-&version;-x86_64-1
+rm -rf /usr/local/emhttp/plugins/&name; /tmp/&name;
+rm -rf /boot/config/plugins/&name;
+echo "&name; removed."
+</INLINE>
+</FILE>
+
+</PLUGIN>

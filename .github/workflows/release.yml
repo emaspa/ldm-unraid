@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint PHP
+        run: |
+          php -l src/usr/local/emhttp/plugins/ldm-unraid/include/LDM.php
+          php -l src/usr/local/emhttp/plugins/ldm-unraid/include/Actions.php
+          php -l src/usr/local/emhttp/plugins/ldm-unraid/scripts/ldmctl
+
+      - name: Build package
+        run: ./build.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Update .plg version and MD5
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          MD5=$(cat "build/ldm-unraid-${VERSION}-x86_64-1.txz.md5")
+          sed -i "s/<!ENTITY version   \"[^\"]*\">/<!ENTITY version   \"${VERSION}\">/" ldm-unraid.plg
+          sed -i "s/<!ENTITY md5       \"[^\"]*\">/<!ENTITY md5       \"${MD5}\">/" ldm-unraid.plg
+          sudo apt-get install -y -qq libxml2-utils >/dev/null
+          xmllint --noout ldm-unraid.plg
+
+      - name: Commit .plg update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          git add ldm-unraid.plg
+          git diff --cached --quiet || git commit -m "Update .plg to ${GITHUB_REF_NAME} with MD5"
+          git push origin main
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG="build/ldm-unraid-${VERSION}-x86_64-1.txz"
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes "$PKG" "$PKG.md5" ldm-unraid.plg

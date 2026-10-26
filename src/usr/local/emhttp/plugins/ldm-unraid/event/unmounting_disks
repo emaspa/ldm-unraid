@@ -1,0 +1,4 @@
+#!/bin/bash
+# Array is stopping (also part of shutdown): unmount LDM volumes cleanly,
+# the same way Unassigned Devices releases its disks.
+/usr/local/emhttp/plugins/ldm-unraid/scripts/ldmctl unmount-all 2>&1 | logger -t ldm-unraid

@@ -1,0 +1,109 @@
+#!/usr/bin/php
+<?php
+/* ldmctl: list, assemble and mount Windows dynamic disk (LDM) volumes. */
+
+require_once __DIR__.'/../include/LDM.php';
+
+function usage(): never
+{
+	fwrite(STDERR, <<<EOT
+Usage: ldmctl [--device DEV]... COMMAND [ARGS]
+
+Commands:
+  status [--json]            List disk groups, volumes and their state
+  mount VOLUME [--rw]        Assemble and mount at /mnt/disks/<label> (read-only by default)
+  unmount VOLUME             Unmount and remove the device-mapper device
+  assemble VOLUME [--rw]     Create /dev/mapper/ldm_vol_<group>_<volume> without mounting
+  remove VOLUME              Remove the device-mapper device (must be unmounted)
+  unmount-all                Unmount and remove every LDM volume
+
+VOLUME is a volume GUID, a dm name (ldm_vol_...), GROUP/VolumeN, or a filesystem label.
+--device limits the scan to the given whole-disk devices (also accepts loop devices).
+
+EOT);
+	exit(2);
+}
+
+function human(int $bytes): string
+{
+	$u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+	$i = 0;
+	$v = $bytes;
+	while ($v >= 1000 && $i < count($u) - 1) { $v /= 1000; $i++; }
+	return ($i ? sprintf('%.1f', $v) : $v).' '.$u[$i];
+}
+
+$args = array_slice($argv, 1);
+$devices = null;
+$flags = [];
+$pos = [];
+for ($i = 0; $i < count($args); $i++) {
+	$a = $args[$i];
+	if ($a === '--device' || $a === '-d') { $devices[] = $args[++$i] ?? usage(); }
+	elseif (str_starts_with($a, '--')) { $flags[$a] = true; }
+	else { $pos[] = $a; }
+}
+$cmd = $pos[0] ?? 'status';
+$rw = isset($flags['--rw']);
+
+try {
+	switch ($cmd) {
+	case 'status':
+		$st = ldm_status($devices);
+		if (isset($flags['--json'])) {
+			echo json_encode($st, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
+			break;
+		}
+		if (!$st['groups']) echo "No Windows dynamic disks found.\n";
+		foreach ($st['groups'] as $g) {
+			echo "Disk group {$g['name']} ({$g['guid']})\n";
+			foreach ($g['disks'] as $d) {
+				$where = $d['device'] ? "{$d['device']}  {$d['model']} {$d['serial']}" : 'MISSING';
+				echo "  {$d['name']}: $where".($d['stale'] ? '  (stale database copy)' : '')."\n";
+			}
+			foreach ($g['volumes'] as $v) {
+				$label = $v['fs']['label'] !== null ? " \"{$v['fs']['label']}\"" : '';
+				$fs = $v['fs']['type'] ?? '?';
+				printf("  %-10s %-9s %10s  %-6s%s%s\n", $v['name'], $v['type'], human($v['size']), $fs, $label, $v['hint'] ? "  (was {$v['hint']})" : '');
+				if ($v['mount']) echo "             mounted ".($v['mount']['readonly'] ? 'ro' : 'rw')." at {$v['mount']['mountpoint']}\n";
+				elseif ($v['assembled']) echo "             assembled at /dev/mapper/{$v['dm_name']}\n";
+				if ($v['problem']) echo "             cannot assemble: {$v['problem']}\n";
+				elseif ($v['missing']) echo "             missing: ".implode(', ', $v['missing'])." (reading the surviving copy)\n";
+			}
+		}
+		foreach ($st['errors'] as $e) fwrite(STDERR, "warning: $e\n");
+		break;
+
+	case 'mount':
+	case 'unmount':
+	case 'assemble':
+	case 'remove':
+		if (!isset($pos[1])) usage();
+		$v = ldm_find_volume(ldm_status($devices), $pos[1]);
+		switch ($cmd) {
+		case 'mount':    echo ldm_mount($v, $rw), "\n"; break;
+		case 'unmount':  ldm_unmount($v); break;
+		case 'assemble': ldm_assemble($v, $rw); echo "/dev/mapper/{$v['dm_name']}\n"; break;
+		case 'remove':   ldm_remove($v); break;
+		}
+		break;
+
+	case 'unmount-all':
+		$errs = ldm_teardown_all();
+		foreach ($errs as $e) fwrite(STDERR, "ldmctl: $e\n");
+		exit($errs ? 1 : 0);
+
+	case 'table':
+		// Debug aid: print the device-mapper table for a volume.
+		if (!isset($pos[1])) usage();
+		$v = ldm_find_volume(ldm_status($devices), $pos[1]);
+		echo $v['table'] ?? "cannot assemble: {$v['problem']}", "\n";
+		break;
+
+	default:
+		usage();
+	}
+} catch (LdmException $e) {
+	fwrite(STDERR, "ldmctl: ".$e->getMessage()."\n");
+	exit(1);
+}

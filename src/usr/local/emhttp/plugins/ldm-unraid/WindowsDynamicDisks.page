@@ -1,0 +1,116 @@
+Menu="Main:4"
+Title="Windows Dynamic Disks"
+Tag="windows"
+---
+<?PHP
+/* Copyright 2026 Emanuele Sparvoli. GPL-3.0-or-later.
+ * Lists volumes on Windows dynamic disks (LDM) and mounts them under /mnt/disks.
+ * The page is named so it sorts after Unassigned Devices (also Main:4). */
+?>
+<style>
+/* disk_status uses a fixed layout with ellipsis; let this table size to its content */
+#ldm_table{table-layout:auto}
+#ldm_table td{white-space:nowrap;overflow:visible;text-overflow:clip}
+#ldm_table td:first-child{text-align:left}
+#ldm_body td.ldm-status{white-space:normal}
+#ldm_body td.ldm-members{font-size:0.9em;opacity:0.85}
+#ldm_body tr.ldm-group td{font-weight:bold}
+#ldm_body .ldm-warn{color:#e68a00}
+#ldm_body .ldm-err{color:#d33}
+#ldm_body button{margin:0 4px 0 0}
+</style>
+<div class="TableContainer">
+  <table class="unraid disk_status" id="ldm_table">
+  <thead>
+    <tr>
+      <td>_(Volume)_</td>
+      <td>_(Type)_</td>
+      <td>_(Disks)_</td>
+      <td>_(FS)_</td>
+      <td>_(Size)_</td>
+      <td>_(Status)_</td>
+      <td><button type="button" onclick="ldmRefresh()">_(Rescan)_</button></td>
+    </tr>
+  </thead>
+  <tbody id="ldm_body"><tr><td colspan="7"><em>_(Scanning)_...</em></td></tr></tbody>
+  </table>
+</div>
+
+<script>
+const ldmURL = '/plugins/ldm-unraid/include/Actions.php';
+
+function ldmEsc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function ldmSize(b) {
+  const u = ['B','KB','MB','GB','TB','PB'];
+  let i = 0;
+  while (b >= 1000 && i < u.length - 1) { b /= 1000; i++; }
+  return (i ? b.toFixed(1) : b) + ' ' + u[i];
+}
+
+function ldmRow(v) {
+  const label = v.fs.label ? ' <em>"' + ldmEsc(v.fs.label) + '"</em>' : '';
+  const hint = v.hint ? ' <span title="_(Drive letter in Windows)_">(' + ldmEsc(v.hint) + ')</span>' : '';
+  const members = v.members.map(m => ldmEsc(m.device ? m.device.replace('/dev/', '') : m.disk + ' (_(missing)_)')).join(', ');
+  let status, action = '';
+  if (v.mount) {
+    const dir = ldmEsc(v.mount.mountpoint);
+    status = (v.mount.readonly ? '_(Mounted read-only)_' : '<span class="ldm-warn">_(Mounted read-write)_</span>') +
+             ' <a href="/Main/Browse?dir=' + encodeURIComponent(v.mount.mountpoint) + '">' + dir + '</a>';
+    action = '<button type="button" onclick="ldmAct(\'unmount\',\'' + v.guid + '\')">_(Unmount)_</button>';
+  } else if (v.problem) {
+    status = '<span class="ldm-err">' + ldmEsc(v.problem) + '</span>';
+  } else {
+    status = v.assembled ? '_(Assembled)_' : '_(Not mounted)_';
+    if (v.missing.length) status += ' <span class="ldm-warn">(_(one copy missing)_)</span>';
+    action = '<button type="button" onclick="ldmAct(\'mount\',\'' + v.guid + '\',\'ro\')">_(Mount)_</button>';
+    if (!v.readonly_only) action += '<button type="button" onclick="ldmMountRW(\'' + v.guid + '\')" title="_(Mount read-write)_">_(R/W)_</button>';
+  }
+  return '<tr><td>' + ldmEsc(v.name) + label + hint + '</td><td>' + ldmEsc(v.type) + '</td><td class="ldm-members">' + members +
+         '</td><td>' + ldmEsc(v.fs.type || '') + '</td><td>' + ldmSize(v.size) + '</td><td class="ldm-status">' + status + '</td><td>' + action + '</td></tr>';
+}
+
+function ldmRender(data) {
+  let html = '';
+  if (!data.ok) {
+    html = '<tr><td colspan="7" class="ldm-err">' + ldmEsc(data.error) + '</td></tr>';
+  } else if (!data.groups.length) {
+    html = '<tr><td colspan="7"><em>_(No Windows dynamic disks found)_</em></td></tr>';
+  }
+  (data.groups || []).forEach(g => {
+    const missing = g.disks.filter(d => !d.device).map(d => d.name);
+    const note = missing.length ? ' <span class="ldm-warn">_(missing)_: ' + ldmEsc(missing.join(', ')) + '</span>' : '';
+    html += '<tr class="ldm-group"><td colspan="7">' + ldmEsc(g.name) + note + '</td></tr>';
+    g.volumes.forEach(v => { html += ldmRow(v); });
+  });
+  (data.errors || []).forEach(e => { html += '<tr><td colspan="7" class="ldm-warn">' + ldmEsc(e) + '</td></tr>'; });
+  $('#ldm_body').html(html);
+}
+
+function ldmRefresh() {
+  $.get(ldmURL, {action: 'status'}, ldmRender, 'json')
+    .fail(xhr => ldmRender({ok: false, error: 'HTTP ' + xhr.status}));
+}
+
+function ldmAct(action, guid, mode) {
+  $('#ldm_body button').prop('disabled', true);
+  $.post(ldmURL, {action: action, volume: guid, mode: mode || 'ro'}, function(r) {
+    if (!r.ok) swal({title: '_(Windows Dynamic Disks)_', text: r.error, type: 'error'});
+    ldmRefresh();
+  }, 'json').fail(xhr => { swal({title: '_(Windows Dynamic Disks)_', text: 'HTTP ' + xhr.status, type: 'error'}); ldmRefresh(); });
+}
+
+function ldmMountRW(guid) {
+  swal({
+    title: '_(Mount read-write?)_',
+    text: '_(Windows may be confused by changes made here, and a volume that Windows did not shut down cleanly can be damaged. Read-only is the safe choice for copying data off.)_',
+    type: 'warning',
+    showCancelButton: true,
+    confirmButtonText: '_(Mount R/W)_'
+  }, function(ok) { if (ok) ldmAct('mount', guid, 'rw'); });
+}
+
+$(ldmRefresh);
+</script>

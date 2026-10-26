@@ -1,0 +1,18 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check .plg is well-formed XML
+        run: |
+          sudo apt-get install -y -qq libxml2-utils >/dev/null
+          xmllint --noout ldm-unraid.plg
+      - name: Lint PHP
+        run: |
+          for f in src/usr/local/emhttp/plugins/ldm-unraid/include/*.php src/usr/local/emhttp/plugins/ldm-unraid/scripts/ldmctl; do php -l "$f"; done
