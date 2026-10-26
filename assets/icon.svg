@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect x="8" y="8" width="496" height="496" rx="44" fill="#1b1c2e" stroke="#33355a" stroke-width="3"/>
+  <!-- one volume -->
+  <rect x="96" y="92" width="320" height="96" rx="16" fill="#ff8c00"/>
+  <circle cx="380" cy="140" r="11" fill="#1b1c2e"/>
+  <rect x="128" y="132" width="200" height="16" rx="8" fill="#1b1c2e" opacity="0.55"/>
+  <!-- joins -->
+  <path d="M176 188 V236 M336 188 V236" stroke="#ff8c00" stroke-width="16" stroke-linecap="round"/>
+  <!-- two disks -->
+  <rect x="96" y="236" width="150" height="132" rx="16" fill="#ff8c00"/>
+  <rect x="266" y="236" width="150" height="132" rx="16" fill="#ff8c00"/>
+  <circle cx="216" cy="338" r="10" fill="#1b1c2e"/>
+  <circle cx="386" cy="338" r="10" fill="#1b1c2e"/>
+  <rect x="120" y="262" width="80" height="14" rx="7" fill="#1b1c2e" opacity="0.55"/>
+  <rect x="290" y="262" width="80" height="14" rx="7" fill="#1b1c2e" opacity="0.55"/>
+  <text x="256" y="470" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="58" fill="#d8d8d8">LDM</text>
+</svg>

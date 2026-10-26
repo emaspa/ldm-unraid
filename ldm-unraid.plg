@@ -7,13 +7,17 @@
 <!ENTITY launch    "Main">
 <!ENTITY repo      "emaspa/ldm-unraid">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&repo;/main/ldm-unraid.plg">
+<!ENTITY support   "https://github.com/&repo;/issues">
 <!ENTITY pkgURL    "https://github.com/&repo;/releases/download/v&version;/&name;-&version;-x86_64-1.txz">
 <!ENTITY md5       "6a8bd5d528114b82a92e63a0d070d70c">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="7.0.0" icon="windows" support="https://github.com/&repo;/issues" description="Read Windows dynamic disks (LDM): simple, spanned, striped and mirrored volumes, mounted under /mnt/disks and optionally shared over SMB.">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="7.0.0" support="&support;" description="Read Windows dynamic disks (LDM): simple, spanned, striped and mirrored volumes, mounted under /mnt/disks and optionally shared over SMB.">
 
 <CHANGES>
+### Unreleased
+- Plugin icon
+
 ### 0.1.0
 - First release: find Windows dynamic disks, assemble simple, spanned, striped and mirrored volumes with device-mapper, and mount them read-only (or read-write) under /mnt/disks
 - Windows Dynamic Disks section on the Main page and an ldmctl command-line tool
@@ -25,9 +29,18 @@
 Volumes are assembled with device-mapper and mounted under /mnt/disks, read-only by default. Nothing is written to the disks unless you choose Mount R/W.
 </README>
 
-<FILE Name="/boot/config/plugins/&name;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
+<FILE Name="/boot/config/plugins/&name;/&name;-&version;-x86_64-1.txz">
 <URL>&pkgURL;</URL>
 <MD5>&md5;</MD5>
+</FILE>
+
+<FILE Run="/bin/bash">
+<INLINE>
+# Keep host directory symlinks and permissions (the package has no directory
+# headers, and these options keep it that way if one ever slips in).
+TAR_OPTIONS="--keep-directory-symlink --no-overwrite-dir" \
+  upgradepkg --install-new /boot/config/plugins/&name;/&name;-&version;-x86_64-1.txz
+</INLINE>
 </FILE>
 
 <FILE Run="/bin/bash">

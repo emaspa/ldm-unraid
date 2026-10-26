@@ -1,0 +1,11 @@
+          |-----handy-ruler------------------------------------------------------|
+ldm-unraid: ldm-unraid (Windows dynamic disks for Unraid)
+ldm-unraid:
+ldm-unraid: Reads Windows dynamic disk (LDM) volumes: simple, spanned, striped
+ldm-unraid: and mirrored, on MBR or GPT disks. Volumes are assembled with
+ldm-unraid: device-mapper, mounted under /mnt/disks (read-only by default) and
+ldm-unraid: can be shared over SMB. Includes the ldmctl command-line tool.
+ldm-unraid:
+ldm-unraid: Homepage: https://github.com/emaspa/ldm-unraid
+ldm-unraid:
+ldm-unraid:
