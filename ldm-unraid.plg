@@ -3,13 +3,13 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "ldm-unraid">
 <!ENTITY author    "emaspa">
-<!ENTITY version   "0.1.1">
+<!ENTITY version   "0.1.2">
 <!ENTITY launch    "Main">
 <!ENTITY repo      "emaspa/ldm-unraid">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&repo;/main/ldm-unraid.plg">
 <!ENTITY support   "https://forums.unraid.net/topic/201053-plugin-support-windows-dynamic-disks-ldm-unraid/">
 <!ENTITY pkgURL    "https://github.com/&repo;/releases/download/v&version;/&name;-&version;-x86_64-1.txz">
-<!ENTITY md5       "dcab45a14f48c5139089d0891c14f25f">
+<!ENTITY md5       "5877e3f69ce7d58565809db7725f25af">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="7.0.0" support="&support;" description="Read Windows dynamic disks (LDM): simple, spanned, striped and mirrored volumes, mounted under /mnt/disks and optionally shared over SMB.">
