@@ -15,7 +15,7 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="7.0.0" support="&support;" description="Read Windows dynamic disks (LDM): simple, spanned, striped and mirrored volumes, mounted under /mnt/disks and optionally shared over SMB.">
 
 <CHANGES>
-### Unreleased
+### 0.1.2
 - SMB share comment: control characters and backslashes in a disk's group or volume name are replaced with _, so a crafted disk can't add lines to the share's Samba config
 
 ### 0.1.1
