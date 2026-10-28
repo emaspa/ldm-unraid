@@ -1020,9 +1020,13 @@ function ldm_share_apply(array $v): void
 	if (!ldm_smb_enabled()) throw new LdmException('SMB is disabled in Settings, SMB');
 
 	$name = ldm_share_name(basename($m['mountpoint']), $v['dm_name']);
+	// The group and volume names come from the disk's LDM database. A newline in either
+	// would start a new smb.conf line and a trailing backslash would continue onto the
+	// path line, so control characters and backslashes are replaced first.
+	$desc = preg_replace('/[\x00-\x1f\x7f\\\\]/', '_', "{$v['group']}/{$v['name']}");
 	$lines = [
 		"[$name]",
-		"\tcomment = Windows dynamic disk {$v['group']}/{$v['name']}",
+		"\tcomment = Windows dynamic disk $desc",
 		"\tpath = {$m['mountpoint']}",
 		"\tbrowseable = yes",
 		"\tread only = ".($m['readonly'] ? 'Yes' : 'No'),
